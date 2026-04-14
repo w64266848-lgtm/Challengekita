@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challenge Pro</title>
+
+<style>
+body{
+  font-family:Arial;
+  background:#0f172a;
+  color:white;
+  padding:20px;
+}
+
+.container{
+  max-width:700px;
+  margin:auto;
+  background:#1e293b;
+  padding:20px;
+  border-radius:16px;
+}
+
+.day{margin-top:10px;}
+
+.day-header{
+  background:#0f172a;
+  padding:12px;
+  border-radius:10px;
+  cursor:pointer;
+}
+
+.day-content{
+  display:none;
+  padding:10px;
+}
+
+.active{display:block;}
+
+button{
+  padding:6px 10px;
+  border:none;
+  border-radius:6px;
+  margin:5px 0;
+  color:white;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+/* warna checklist */
+.done.true{background:#22c55e;}  /* hijau */
+.done.false{background:#ef4444;} /* merah */
+
+.counter{background:#38bdf8;}
+
+.progress{
+  height:10px;
+  background:#334155;
+  border-radius:10px;
+  overflow:hidden;
+  margin:5px 0;
+}
+
+.bar{
+  height:100%;
+  background:#22c55e;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<h2 id="title"></h2>
+<div id="users"></div>
+
+<h3>🏆 Ranking</h3>
+<div id="ranking"></div>
+
+<h3>📊 Progress</h3>
+<div id="progress"></div>
+
+<div id="days"></div>
+
+<button onclick="back()">⬅ Kembali</button>
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore,
+  doc,
+  onSnapshot,
+  updateDoc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDJPkxQ8YuyTGd01wgD99TLHctcyjIQB4U",
+  authDomain: "challengekita-734c0.firebaseapp.com",
+  projectId: "challengekita-734c0",
+  storageBucket: "challengekita-734c0.firebasestorage.app",
+  messagingSenderId: "237724403045",
+  appId: "1:237724403045:web:b95e7b7cd96553e1e04d8c",
+  measurementId: "G-YT69CQKQ6W"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const id = localStorage.getItem("activeChallenge");
+
+if(!id){
+  alert("Masuk dari halaman utama!");
+  location.href="Start.html";
+}
+
+const ref = doc(db,"challenges",id);
+
+// ================= REALTIME =================
+onSnapshot(ref,(snap)=>{
+  if(!snap.exists()) return;
+
+  const c = snap.data();
+
+  title.innerText = c.title;
+  users.innerText = c.users.user1.name+" vs "+c.users.user2.name;
+
+  renderProgress(c);
+  renderRanking(c);
+  renderDays(c);
+});
+
+// ================= HITUNG TOTAL =================
+function totalProgress(user){
+  return Object.values(user.progress || {}).reduce((a,b)=>a+(b?1:0),0);
+}
+
+// ================= PROGRESS =================
+function renderProgress(c){
+
+  let p1 = totalProgress(c.users.user1);
+  let p2 = totalProgress(c.users.user2);
+
+  let max = c.totalDays;
+
+  progress.innerHTML = `
+  ${c.users.user1.name}
+  <div class="progress">
+    <div class="bar" style="width:${(p1/max)*100}%"></div>
+  </div>
+
+  ${c.users.user2.name}
+  <div class="progress">
+    <div class="bar" style="width:${(p2/max)*100}%"></div>
+  </div>
+  `;
+}
+
+// ================= RANKING =================
+function renderRanking(c){
+
+  let p1 = totalProgress(c.users.user1);
+  let p2 = totalProgress(c.users.user2);
+
+  let winner = "Seri 🤝";
+
+  if(p1>p2) winner = c.users.user1.name+" unggul 🏆";
+  if(p2>p1) winner = c.users.user2.name+" unggul 🏆";
+
+  ranking.innerHTML = winner;
+}
+
+// ================= DAYS =================
+function renderDays(c){
+
+  days.innerHTML="";
+
+  for(let i=1;i<=c.totalDays;i++){
+
+    let p1 = c.users.user1.progress?.[i] || false;
+    let p2 = c.users.user2.progress?.[i] || false;
+
+    if(c.type==="checklist"){
+      days.innerHTML+=`
+      <div class="day">
+        <div class="day-header" onclick="toggle(${i})">
+          📅 Hari ${i}
+        </div>
+
+        <div id="content-${i}" class="day-content">
+
+          ${c.users.user1.name}
+          <br>
+          <button class="done ${p1?'true':'false'}" onclick="update('${i}','user1')">
+            ${p1?"✔":"❌"}
+          </button>
+
+          <br><br>
+
+          ${c.users.user2.name}
+          <br>
+          <button class="done ${p2?'true':'false'}" onclick="update('${i}','user2')">
+            ${p2?"✔":"❌"}
+          </button>
+
+        </div>
+      </div>`;
+    }else{
+      days.innerHTML+=`
+      <div class="day">
+        <div class="day-header" onclick="toggle(${i})">
+          📅 Hari ${i}
+        </div>
+
+        <div id="content-${i}" class="day-content">
+
+          ${c.users.user1.name}: ${p1}
+          <button class="counter" onclick="add('${i}','user1')">+</button>
+
+          <br><br>
+
+          ${c.users.user2.name}: ${p2}
+          <button class="counter" onclick="add('${i}','user2')">+</button>
+
+        </div>
+      </div>`;
+    }
+  }
+}
+
+// ================= TOGGLE =================
+window.toggle = function(i){
+  document.getElementById("content-"+i).classList.toggle("active");
+}
+
+// ================= CHECKLIST TOGGLE =================
+window.update = async function(day,user){
+
+  const snap = await getDoc(ref);
+  const c = snap.data();
+
+  let current = c.users[user].progress?.[day] || false;
+
+  await updateDoc(ref,{
+    [`users.${user}.progress.${day}`]: !current
+  });
+}
+
+// ================= COUNTER =================
+window.add = async function(day,user){
+
+  const snap = await getDoc(ref);
+  const c = snap.data();
+
+  let cur = c.users[user].progress?.[day] || 0;
+
+  await updateDoc(ref,{
+    [`users.${user}.progress.${day}`]: cur+1
+  });
+}
+
+// ================= BACK =================
+window.back = function(){
+  location.href="Start.html";
+}
+
+</script>
+
+</body>
+</html>

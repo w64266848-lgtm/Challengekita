@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Challenge App</title>
+
+<style>
+body{font-family:Arial;background:#0f172a;color:white;padding:20px;}
+.container{max-width:700px;margin:auto;background:#1e293b;padding:20px;border-radius:16px;}
+input,select,button{width:100%;padding:10px;margin:8px 0;border:none;border-radius:8px;}
+input,select{background:#334155;color:white;}
+button{background:#38bdf8;font-weight:bold;cursor:pointer;}
+.challenge{background:#0f172a;padding:10px;border-radius:10px;margin-top:10px;}
+.row{display:flex;gap:5px;}
+.row button{flex:1;font-size:12px;}
+.delete{background:#ef4444;}
+.open{background:#22c55e;}
+.join{background:#22c55e;}
+.copy{background:#f59e0b;}
+.logout{background:#ef4444;}
+</style>
+</head>
+
+<body>
+
+<button onclick="logout()" class="logout">🚪 Logout</button>
+
+<div class="container">
+
+<h3 id="userInfo"></h3>
+
+<h2>🔥 Buat Challenge</h2>
+<input id="title" placeholder="Judul">
+<input id="days" type="number" placeholder="Jumlah Hari">
+
+<select id="type">
+  <option value="checklist">Checklist</option>
+  <option value="counter">Counter</option>
+</select>
+
+<button onclick="startChallenge()">+ Buat</button>
+
+<hr>
+
+<h3>🔗 Gabung</h3>
+<input id="joinCode" placeholder="Masukkan Kode">
+<button onclick="joinChallenge()" class="join">Gabung</button>
+
+<h3>📋 Challenge Kamu</h3>
+<div id="list"></div>
+
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  doc,
+  updateDoc,
+  query,
+  where
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// 🔥 CONFIG FIREBASE
+const firebaseConfig = {
+  apiKey: "AIzaSyDJPkxQ8YuyTGd01wgD99TLHctcyjIQB4U",
+  authDomain: "challengekita-734c0.firebaseapp.com",
+  projectId: "challengekita-734c0",
+  storageBucket: "challengekita-734c0.firebasestorage.app",
+  messagingSenderId: "237724403045",
+  appId: "1:237724403045:web:b95e7b7cd96553e1e04d8c",
+  measurementId: "G-YT69CQKQ6W"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ================= USER =================
+let user = localStorage.getItem("username");
+
+if(!user){
+  user = prompt("Masukkan nama kamu:");
+  if(!user){
+    alert("Nama wajib!");
+    location.reload();
+  }
+  localStorage.setItem("username", user);
+}
+
+document.getElementById("userInfo").innerText = "👋 Halo, " + user;
+
+// ================= LOGOUT =================
+window.logout = function(){
+  if(confirm("Yakin logout?")){
+    localStorage.clear();
+    location.reload();
+  }
+}
+
+// ================= CREATE =================
+window.startChallenge = async function(){
+
+  let title = document.getElementById("title").value;
+  let days = parseInt(document.getElementById("days").value);
+  let type = document.getElementById("type").value;
+
+  if(!title || !days){
+    alert("Isi semua!");
+    return;
+  }
+
+  let code = Math.random().toString(36).substring(2,8).toUpperCase();
+
+  await addDoc(collection(db,"challenges"),{
+    code,
+    title,
+    type,
+    totalDays: days,
+    members:[user], // ✅ penting
+    users:{
+      user1:{name:user,progress:{}},
+      user2:{name:"-",progress:{}}
+    }
+  });
+
+  alert("Kode: "+code);
+
+  document.getElementById("title").value="";
+  document.getElementById("days").value="";
+
+  render();
+}
+
+// ================= JOIN =================
+window.joinChallenge = async function(){
+
+  let code = document.getElementById("joinCode").value.trim().toUpperCase();
+
+  if(!code){
+    alert("Masukkan kode!");
+    return;
+  }
+
+  let snap = await getDocs(collection(db,"challenges"));
+  let found = null;
+
+  snap.forEach(d=>{
+    if(d.data().code === code){
+      found = d;
+    }
+  });
+
+  if(!found){
+    alert("Kode tidak ditemukan!");
+    return;
+  }
+
+  let data = found.data();
+
+  if(data.users.user2.name !== "-"){
+    alert("Sudah penuh!");
+    return;
+  }
+
+  await updateDoc(doc(db,"challenges",found.id),{
+    "users.user2.name": user,
+    members: [...data.members, user] // ✅ penting
+  });
+
+  alert("Berhasil gabung!");
+
+  document.getElementById("joinCode").value="";
+
+  render();
+}
+
+// ================= DELETE =================
+window.deleteChallenge = async function(id){
+  if(!confirm("Hapus?")) return;
+  await deleteDoc(doc(db,"challenges",id));
+  render();
+}
+
+// ================= OPEN =================
+window.openChallenge = function(id){
+  localStorage.setItem("activeChallenge", id);
+  location.href = "challenge.html";
+}
+
+// ================= COPY =================
+window.copyCode = function(code){
+  navigator.clipboard.writeText(code);
+  alert("Kode disalin!");
+}
+
+// ================= RENDER =================
+async function render(){
+
+  let box = document.getElementById("list");
+  box.innerHTML="Loading...";
+
+  // ✅ ambil hanya challenge milik user
+  let q = query(
+    collection(db,"challenges"),
+    where("members","array-contains", user)
+  );
+
+  let snap = await getDocs(q);
+
+  box.innerHTML="";
+
+  snap.forEach(d=>{
+    let c = d.data();
+
+    box.innerHTML+=`
+    <div class="challenge">
+      <b>${c.title}</b><br>
+      🔑 ${c.code}<br>
+      👤 ${c.users.user1.name} vs ${
+        c.users.user2.name === "-"
+        ? "Menunggu lawan..."
+        : c.users.user2.name
+      }<br>
+
+      <div class="row">
+        <button class="copy" onclick="copyCode('${c.code}')">Copy</button>
+        <button class="open" onclick="openChallenge('${d.id}')">Lihat</button>
+        <button class="delete" onclick="deleteChallenge('${d.id}')">Hapus</button>
+      </div>
+    </div>`;
+  });
+
+  if(box.innerHTML===""){
+    box.innerHTML="Belum ada challenge kamu 😎";
+  }
+}
+
+render();
+
+</script>
+</body>
+</html>
